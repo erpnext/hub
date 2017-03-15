@@ -1,7 +1,0 @@
-## Hub
-
-Hub
-
-#### License
-
-MIT

@@ -2,6 +2,7 @@
 # For license information, please see license.txt
 
 import frappe, json
+from frappe.utils import now
 
 @frappe.whitelist(allow_guest=True)
 def register(enabled, hub_user_name, email, company, country, publish, seller_website=None, seller_city=None,
@@ -57,15 +58,32 @@ def sync(password, items, item_list):
 			hub_item = frappe.new_doc("Hub Item")
 			hub_item.hub_user = hub_user.name
 
-		for key in ("item_code", "item_name", "description", "image", "item_group", "price", "stock_qty", "uom"):
+		for key in ("item_code", "item_name", "description", "image", "item_group", "price", "stock_qty", "stock_uom"):
 			hub_item.set(key, item.get(key))
 
-		for key in ("user_name", "email", "country", "seller_city"):
+		for key in ("hub_user_name", "email", "country", "seller_city"):
 			hub_item.set(key, hub_user.get(key))
 
 		hub_item.published = 1
 		hub_item.save(ignore_permissions=True)
+	return frappe._dict({"last_sync_datetime":now()})
 
+@frappe.whitelist(allow_guest=True)
+def get_items(password, text, country=None, start=0, limit=50):
+	"""Returns list of items by filters"""
+	get_user(password)
+	or_filters = [
+		{"item_name": ["like", "%{0}%".format(text)]},
+		{"description": ["like", "%{0}%".format(text)]}
+	]
+	filters = {
+		"published": 1
+	}
+	if country:
+		filters["country"] = country
+	return frappe.get_all("Hub Item", fields=["item_code", "item_name", "description", "image",
+		"hub_user_name", "email", "country", "seller_city"],
+			filters=filters, or_filters=or_filters, limit_start = start, limit_page_length = limit)
 
 def get_user(password):
 	return frappe.get_doc("Hub User", {"password": password})
