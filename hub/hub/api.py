@@ -9,7 +9,7 @@ from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives.serialization import load_pem_private_key, load_pem_public_key
 
-user_profile_fields = ["enabled", "hub_user_name", "email", "company", "country", "public_key_pem"]
+user_profile_fields = ["enabled", "hub_user_name", "email", "country", "public_key_pem"]
 seller_fields = ["publish", "seller_website", "seller_city", "seller_description"]
 
 private_files = frappe.get_site_path('private', 'files')
@@ -37,10 +37,10 @@ def register(args_data):
 	return response
 
 @frappe.whitelist(allow_guest=True)
-def unregister(password):
+def unregister(access_token):
 	# Delete all of user's transactions and items
 	print "////////unregister////////"
-	hub_user = get_user(password)
+	hub_user = get_user(access_token)
 
 	# last step
 	frappe.delete_doc('Hub User', hub_user.name, ignore_permissions=True)
@@ -53,13 +53,13 @@ def unpublish(access_token):
 	seller.save(ignore_permissions=True)
 
 @frappe.whitelist(allow_guest=True)
-def call_method(password, method, message):
-	hub_user = get_user(password)
+def call_method(access_token, method, message):
+	hub_user = get_user(access_token)
 	args = json.loads(message)
 	return getattr(hub_user, method)(args)
 
 @frappe.whitelist(allow_guest=True)
-def decrypt_message_and_call_method(password, method, signature, encrypted_key, message):
+def decrypt_message_and_call_method(access_token, method, signature, encrypted_key, message):
 	print type(encrypted_key)
 	print len(encrypted_key)
 	en_key = str(encrypted_key.encode('latin-1'))
@@ -67,7 +67,7 @@ def decrypt_message_and_call_method(password, method, signature, encrypted_key, 
 	print en_key
 	print len(en_key)
 
-	hub_user = get_user(password)
+	hub_user = get_user(access_token)
 	user_public_key = load_pem_public_key(
 		str(hub_user.public_key_pem),
 		backend=default_backend()
@@ -109,9 +109,9 @@ def decrypt_message_and_call_method(password, method, signature, encrypted_key, 
 	getattr(hub_user, method)(args)
 
 @frappe.whitelist(allow_guest=True)
-def get_items(password, text=None, category=None, seller=None, country=None, start=0, limit=50):
+def get_items(access_token, text=None, category=None, seller=None, country=None, start=0, limit=50):
 	"""Returns list of items by filters"""
-	get_user(password)
+	get_user(access_token)
 	or_filters = [
 		{"item_name": ["like", "%{0}%".format(text)]},
 		{"description": ["like", "%{0}%".format(text)]}
@@ -130,8 +130,8 @@ def get_items(password, text=None, category=None, seller=None, country=None, sta
 			filters=filters, or_filters=or_filters, limit_start = start, limit_page_length = limit)
 
 @frappe.whitelist(allow_guest=True)
-def get_user(password):
-	return frappe.get_doc("Hub User", {"password": password})
+def get_user(access_token):
+	return frappe.get_doc("Hub User", {"access_token": access_token})
 
 @frappe.whitelist(allow_guest=True)
 def get_all_users():
@@ -142,7 +142,7 @@ def get_categories():
 	return frappe.get_all("Hub Category", fields=["category_name"])
 
 @frappe.whitelist(allow_guest=True)
-def get_user_details(password, user_name):
+def get_user_details(access_token, user_name):
 	return frappe.get_doc("Hub User", {"hub_user_name": user_name})
 
 
@@ -160,7 +160,7 @@ def test():
 	return response.json().get("message")
 
 @frappe.whitelist(allow_guest=True)
-def load_message(password, msg_type, sender, receiver, receiver_website, msg_data):
+def load_message(access_token, msg_type, sender, receiver, receiver_website, msg_data):
 	msg = frappe.new_doc("Hub Message")
 	msg.message_type = msg_type
 	if msg_type == "Request for Quotation":

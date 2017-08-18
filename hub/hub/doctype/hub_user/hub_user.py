@@ -9,7 +9,8 @@ from frappe.utils import random_string, now
 
 class HubUser(Document):
 	def autoname(self):
-		self.password = random_string(16)
+		access_token = random_string(16)
+		self.access_token = access_token
 
 	def update_user_details(self, args):
 		self.old = frappe.get_doc('Hub User', self.name)
