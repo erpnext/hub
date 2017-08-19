@@ -20,6 +20,7 @@ if os.path.exists(public_key_path):
 	with open(public_key_path, "rb") as public_key_file:
 		hub_public_key_pem = public_key_file.read()
 
+### Commands
 @frappe.whitelist(allow_guest=True)
 def register(args_data):
 	"""Register on the hub."""
@@ -37,26 +38,83 @@ def register(args_data):
 	return response
 
 @frappe.whitelist(allow_guest=True)
+def call_method(access_token, method, message):
+	args = json.loads(message)
+	if args:
+		return globals()[method](access_token, args)
+	else:
+		return globals()[method](access_token)
+
 def unregister(access_token):
-	# Delete all of user's transactions and items
-	print "////////unregister////////"
 	hub_user = get_user(access_token)
 
-	# last step
+	# Delete items
+	for item in frappe.get_all("Hub Item", filters={"hub_user_name": hub_user.name}):
+		frappe.delete_doc('Hub Item', item["name"], ignore_permissions=True)
+
+	# TODO: Delete all of user's transactions
+
+	# Delete user
 	frappe.delete_doc('Hub User', hub_user.name, ignore_permissions=True)
 
+def update_user_details(access_token, args):
+	hub_user = get_user(access_token)
+	return hub_user.update_user_details(args)
+
+# Enqueue
+def update_items(access_token, args):
+	hub_user = get_user(access_token)
+	return hub_user.update_items(args)
+
+# Enqueue
+def add_item_fields(access_token, args):
+	hub_user = get_user(access_token)
+	return hub_user.add_item_fields(args)
+
+def remove_item_fields(access_token, args):
+	hub_user = get_user(access_token)
+	return hub_user.remove_item_fields(args)
+
+
+### Queries
 @frappe.whitelist(allow_guest=True)
-def unpublish(access_token):
-	"""Un publish seller"""
-	seller = get_seller(access_token)
-	seller.published=0
-	seller.save(ignore_permissions=True)
+def get_items(access_token, text=None, category=None, seller=None, country=None, start=0, limit=50):
+	"""Returns list of items by filters"""
+	get_user(access_token)
+	or_filters = [
+		{"item_name": ["like", "%{0}%".format(text)]},
+		{"description": ["like", "%{0}%".format(text)]}
+	]
+	filters = {
+		"published": "1"
+	}
+	if category:
+		filters["item_group"] = category
+	if seller:
+		filters["hub_user_name"] = seller
+	if country:
+		filters["country"] = country
+	return frappe.get_all("Hub Item", fields=["item_code", "item_name", "item_group", "description", "image",
+		"hub_user_name", "email", "country", "seller_city", "company", "seller_website"],
+			filters=filters, or_filters=or_filters, limit_start = start, limit_page_length = limit)
 
 @frappe.whitelist(allow_guest=True)
-def call_method(access_token, method, message):
-	hub_user = get_user(access_token)
-	args = json.loads(message)
-	return getattr(hub_user, method)(args)
+def get_user(access_token):
+	return frappe.get_doc("Hub User", {"access_token": access_token})
+
+@frappe.whitelist(allow_guest=True)
+def get_all_users():
+	return frappe.get_all("Hub User", fields=["hub_user_name", "country"])
+
+@frappe.whitelist(allow_guest=True)
+def get_categories():
+	return frappe.get_all("Hub Category", fields=["category_name"])
+
+@frappe.whitelist(allow_guest=True)
+def get_user_details(access_token, user_name):
+	return frappe.get_doc("Hub User", {"hub_user_name": user_name})
+
+
 
 @frappe.whitelist(allow_guest=True)
 def decrypt_message_and_call_method(access_token, method, signature, encrypted_key, message):
@@ -107,92 +165,3 @@ def decrypt_message_and_call_method(access_token, method, signature, encrypted_k
 	plaintext = f.decrypt(str(message))
 	args = json.loads(plaintext.decode("utf-8"))
 	getattr(hub_user, method)(args)
-
-@frappe.whitelist(allow_guest=True)
-def get_items(access_token, text=None, category=None, seller=None, country=None, start=0, limit=50):
-	"""Returns list of items by filters"""
-	get_user(access_token)
-	or_filters = [
-		{"item_name": ["like", "%{0}%".format(text)]},
-		{"description": ["like", "%{0}%".format(text)]}
-	]
-	filters = {
-		"published": "1"
-	}
-	if category:
-		filters["item_group"] = category
-	if seller:
-		filters["hub_user_name"] = seller
-	if country:
-		filters["country"] = country
-	return frappe.get_all("Hub Item", fields=["item_code", "item_name", "item_group", "description", "image",
-		"hub_user_name", "email", "country", "seller_city", "company", "seller_website"],
-			filters=filters, or_filters=or_filters, limit_start = start, limit_page_length = limit)
-
-@frappe.whitelist(allow_guest=True)
-def get_user(access_token):
-	return frappe.get_doc("Hub User", {"access_token": access_token})
-
-@frappe.whitelist(allow_guest=True)
-def get_all_users():
-	return frappe.get_all("Hub User", fields=["hub_user_name", "country"])
-
-@frappe.whitelist(allow_guest=True)
-def get_categories():
-	return frappe.get_all("Hub Category", fields=["category_name"])
-
-@frappe.whitelist(allow_guest=True)
-def get_user_details(access_token, user_name):
-	return frappe.get_doc("Hub User", {"hub_user_name": user_name})
-
-
-
-
-
-
-
-# TESTER
-@frappe.whitelist(allow_guest=True)
-def test():
-	user = "http://erpnext.reinstall:8000"
-	response = requests.get(user + "/api/method/erpnext.hub_node.api.test")
-	response.raise_for_status()
-	return response.json().get("message")
-
-@frappe.whitelist(allow_guest=True)
-def load_message(access_token, msg_type, sender, receiver, receiver_website, msg_data):
-	msg = frappe.new_doc("Hub Message")
-	msg.message_type = msg_type
-	if msg_type == "Request for Quotation":
-		msg.naming_series = "DAT-RFQ-"
-	else:
-		msg.naming_series = "DAT-OPP-"
-
-	msg.sender = sender
-	msg.receiver = receiver
-	msg.receiver_website = receiver_website
-
-	msg.message_body = msg_data
-
-	msg.save(ignore_permissions=True)
-	frappe.db.commit()
-
-	send_messages()
-
-def send_messages():
-	for msg in frappe.get_all("Hub Message", fields=["message_type", "receiver_website", "message_body"]):
-		send_message(msg)
-
-def send_message(message):
-	msg_type = message["message_type"]
-	receiver_website = message["receiver_website"]
-	msg_data = message["message_body"]
-	response = requests.get(receiver_website + "/api/method/erpnext.hub_node.api.make", data={
-				"msg_type": msg_type,
-				"data": msg_data
-			})
-	response.raise_for_status()
-	return response.json().get("message")
-
-def store_keys():
-	pass
