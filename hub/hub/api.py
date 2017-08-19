@@ -47,10 +47,7 @@ def call_method(access_token, method, message):
 
 def unregister(access_token):
 	hub_user = get_user(access_token)
-
-	# Delete items
-	for item in frappe.get_all("Hub Item", filters={"hub_user_name": hub_user.name}):
-		frappe.delete_doc('Hub Item', item["name"], ignore_permissions=True)
+	unpublish_items(access_token)
 
 	# TODO: Delete all of user's transactions
 
@@ -74,6 +71,10 @@ def add_item_fields(access_token, args):
 def remove_item_fields(access_token, args):
 	hub_user = get_user(access_token)
 	return hub_user.remove_item_fields(args)
+
+def unpublish_items(access_token):
+	hub_user = get_user(access_token)
+	return hub_user.unpublish_items()
 
 
 ### Queries
