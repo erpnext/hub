@@ -58,7 +58,7 @@ def update_user_details(access_token, args):
 	hub_user = get_user(access_token)
 	return hub_user.update_user_details(args)
 
-# Enqueue
+# Enqueue: bah, ALL commands will be enqueued, for this we'll set the max request size to be something like, 5 items
 def update_items(access_token, args):
 	hub_user = get_user(access_token)
 	return hub_user.update_items(args)
@@ -76,6 +76,12 @@ def unpublish_items(access_token):
 	hub_user = get_user(access_token)
 	return hub_user.unpublish_items()
 
+
+def update_item(access_token, args):
+	hub_user = get_user(access_token)
+	item_code = args["item_code"]
+	item = frappe.get_doc("Hub Item", {"hub_user_name": hub_user.name, "item_code":item_code})
+	return item.update_item_details(args)
 
 ### Queries
 @frappe.whitelist(allow_guest=True)

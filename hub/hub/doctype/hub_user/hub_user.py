@@ -18,6 +18,7 @@ class HubUser(Document):
 			old_value = self.old.get(key)
 			if(new_value != old_value):
 				self.set(key, new_value)
+				frappe.db.set_value("Hub User", self.name, key, new_value)
 
 	def unpublish(self):
 		"""Un publish seller, delete items"""
