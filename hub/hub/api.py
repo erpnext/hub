@@ -9,8 +9,10 @@ from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives.serialization import load_pem_private_key, load_pem_public_key
 
-user_profile_fields = ["enabled", "hub_user_name", "email", "country", "public_key_pem"]
-seller_fields = ["publish", "seller_website", "seller_city", "seller_description"]
+user_config_fields = ["enabled", "public_key_pem"]
+user_profile_fields = ["hub_user_name", "email", "country", "company"]
+seller_fields = ["seller_website", "seller_city", "seller_description"]
+publishing_fields = ["publish", "publish_pricing", "publish_availability"]
 
 private_files = frappe.get_site_path('private', 'files')
 public_key_path = os.path.join(private_files, "hub_rsa.pub")
@@ -29,7 +31,7 @@ def register(args_data):
 		return
 
 	hub_user = frappe.new_doc("Hub User")
-	for key in user_profile_fields:
+	for key in user_profile_fields + user_config_fields:
 		hub_user.set(key, args[key])
 
 	hub_user.insert(ignore_permissions=True)
@@ -58,12 +60,10 @@ def update_user_details(access_token, args):
 	hub_user = get_user(access_token)
 	return hub_user.update_user_details(args)
 
-# Enqueue: bah, ALL commands will be enqueued, for this we'll set the max request size to be something like, 5 items
 def update_items(access_token, args):
 	hub_user = get_user(access_token)
 	return hub_user.update_items(args)
 
-# Enqueue
 def add_item_fields(access_token, args):
 	hub_user = get_user(access_token)
 	return hub_user.add_item_fields(args)
@@ -80,44 +80,57 @@ def unpublish_items(access_token):
 def update_item(access_token, args):
 	hub_user = get_user(access_token)
 	item_code = args["item_code"]
+	item_dict = json.loads(args["item_dict"])
 	item = frappe.get_doc("Hub Item", {"hub_user_name": hub_user.name, "item_code":item_code})
-	return item.update_item_details(args)
+	return item.update_item_details(item_dict)
+
+def insert_item(access_token, args):
+	hub_user = get_user(access_token)
+	item = frappe.new_doc("Hub Item")
+	item_dict = json.loads(args["item_dict"])
+	item.update_item_details(item_dict)
+	for key in user_profile_fields + ["seller_website", "seller_city"]:
+		item.set(key, hub_user.get(key))
+	item.save(ignore_permissions=True)
+
+def delete_item(access_token, args):
+	hub_user = get_user(access_token)
+	item_code = args["item_code"]
+	item = frappe.get_doc("Hub Item", {"hub_user_name": hub_user.name, "item_code":item_code})
+	frappe.delete_doc('Hub Item', item.name, ignore_permissions=True)
+
 
 ### Queries
-@frappe.whitelist(allow_guest=True)
-def get_items(access_token, text=None, category=None, seller=None, country=None, start=0, limit=50):
+def get_items(access_token, args):
 	"""Returns list of items by filters"""
+	# args["text"]=None, args["category"]=None, args["company"]=None, args["country"]=None, args["start"]=0, args["limit"]=50
 	get_user(access_token)
 	or_filters = [
-		{"item_name": ["like", "%{0}%".format(text)]},
-		{"description": ["like", "%{0}%".format(text)]}
+		{"item_name": ["like", "%{0}%".format(args["text"])]},
+		{"description": ["like", "%{0}%".format(args["text"])]}
 	]
 	filters = {
 		"published": "1"
 	}
-	if category:
-		filters["item_group"] = category
-	if seller:
-		filters["hub_user_name"] = seller
-	if country:
-		filters["country"] = country
+	if args["category"]:
+		filters["item_group"] = args["category"]
+	if args["company"]:
+		filters["company"] = args["company"]
+	if args["country"]:
+		filters["country"] = args["country"]
 	return frappe.get_all("Hub Item", fields=["item_code", "item_name", "item_group", "description", "image",
 		"hub_user_name", "email", "country", "seller_city", "company", "seller_website"],
-			filters=filters, or_filters=or_filters, limit_start = start, limit_page_length = limit)
+			filters=filters, or_filters=or_filters, limit_start = args["start"], limit_page_length = args["limit"])
 
-@frappe.whitelist(allow_guest=True)
 def get_user(access_token):
 	return frappe.get_doc("Hub User", {"access_token": access_token})
 
-@frappe.whitelist(allow_guest=True)
-def get_all_users():
+def get_all_users(access_token):
 	return frappe.get_all("Hub User", fields=["hub_user_name", "country"])
 
-@frappe.whitelist(allow_guest=True)
-def get_categories():
+def get_categories(access_token):
 	return frappe.get_all("Hub Category", fields=["category_name"])
 
-@frappe.whitelist(allow_guest=True)
 def get_user_details(access_token, user_name):
 	return frappe.get_doc("Hub User", {"hub_user_name": user_name})
 
