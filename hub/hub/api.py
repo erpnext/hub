@@ -91,6 +91,7 @@ def insert_item(access_token, args):
 	item.update_item_details(item_dict)
 	for key in user_profile_fields + ["seller_website", "seller_city"]:
 		item.set(key, hub_user.get(key))
+	item.published = 1
 	item.save(ignore_permissions=True)
 
 def delete_item(access_token, args):
@@ -119,7 +120,7 @@ def get_items(access_token, args):
 	if args["country"]:
 		filters["country"] = args["country"]
 	return frappe.get_all("Hub Item", fields=["item_code", "item_name", "item_group", "description", "image",
-		"hub_user_name", "email", "country", "seller_city", "company", "seller_website"],
+		"hub_user_name", "email", "country", "seller_city", "company", "seller_website", "standard_rate"],
 			filters=filters, or_filters=or_filters, limit_start = args["start"], limit_page_length = args["limit"])
 
 def get_user(access_token):
